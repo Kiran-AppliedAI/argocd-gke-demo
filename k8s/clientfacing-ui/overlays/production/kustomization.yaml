@@ -9,7 +9,7 @@ resources:
 images:
   - name: clientfacing-ui
     newName: us-central1-docker.pkg.dev/aaic-opsrabbit-demo/argocd-demo/clientfacing-ui
-    newTag: bootstrap
+    newTag: v1
 
 patches:
   - path: service-patch.yaml
