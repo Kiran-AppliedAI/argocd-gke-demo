@@ -1,0 +1,152 @@
+name: ArgoCD Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: ArgoCD Application name
+        required: true
+        default: inventory-api
+        type: choice
+        options:
+          - inventory-api
+          - clientfacing-ui
+      dry_run:
+        description: Validate only, do not apply
+        required: true
+        default: false
+        type: boolean
+      force_sync:
+        description: Force ArgoCD sync after apply
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PROJECT_ID: aaic-opsrabbit-demo
+      GKE_CLUSTER: argocd-demo
+      GKE_LOCATION: us-central1-a
+      ARGOCD_NAMESPACE: argocd
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate workflow secrets
+        run: |
+          test -n "${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}" || { echo "Missing secret GCP_WORKLOAD_IDENTITY_PROVIDER"; exit 1; }
+          test -n "${{ secrets.GCP_SERVICE_ACCOUNT }}" || { echo "Missing secret GCP_SERVICE_ACCOUNT"; exit 1; }
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          project_id: aaic-opsrabbit-demo
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v3
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_LOCATION }}
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Verify cluster access
+        run: |
+          kubectl get nodes
+          kubectl get namespace "${ARGOCD_NAMESPACE}"
+
+      - name: Verify ArgoCD CRD exists
+        run: |
+          kubectl get crd applications.argoproj.io
+
+      - name: Validate application manifest exists
+        run: |
+          test -f "argocd/applications/${{ inputs.app_name }}.yaml"
+
+      - name: Dry-run application apply
+        if: ${{ inputs.dry_run }}
+        run: |
+          kubectl apply \
+            --namespace "${ARGOCD_NAMESPACE}" \
+            --dry-run=server \
+            -f "argocd/applications/${{ inputs.app_name }}.yaml"
+
+      - name: Apply ArgoCD application
+        if: ${{ !inputs.dry_run }}
+        run: |
+          kubectl apply \
+            --namespace "${ARGOCD_NAMESPACE}" \
+            -f "argocd/applications/${{ inputs.app_name }}.yaml"
+
+      - name: Install ArgoCD CLI
+        if: ${{ !inputs.dry_run && inputs.force_sync }}
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/argocd
+
+      - name: Port-forward ArgoCD server
+        if: ${{ !inputs.dry_run && inputs.force_sync }}
+        run: |
+          kubectl port-forward svc/argocd-server -n "${ARGOCD_NAMESPACE}" 8080:443 >/tmp/argocd-port-forward.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if nc -z 127.0.0.1 8080; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/argocd-port-forward.log
+          exit 1
+
+      - name: Sync application in ArgoCD
+        if: ${{ !inputs.dry_run && inputs.force_sync }}
+        run: |
+          ARGOCD_PASSWORD="$(kubectl get secret argocd-initial-admin-secret -n "${ARGOCD_NAMESPACE}" -o jsonpath='{.data.password}' | base64 -d)"
+          argocd login 127.0.0.1:8080 \
+            --username admin \
+            --password "${ARGOCD_PASSWORD}" \
+            --insecure
+          argocd app sync "${{ inputs.app_name }}"
+
+      - name: Wait for ArgoCD application health
+        if: ${{ !inputs.dry_run }}
+        run: |
+          APP_NAME="${{ inputs.app_name }}"
+          for _ in $(seq 1 36); do
+            SYNC_STATUS="$(kubectl get application "${APP_NAME}" -n "${ARGOCD_NAMESPACE}" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+            HEALTH_STATUS="$(kubectl get application "${APP_NAME}" -n "${ARGOCD_NAMESPACE}" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
+            echo "sync=${SYNC_STATUS:-unknown} health=${HEALTH_STATUS:-unknown}"
+
+            if [ "${SYNC_STATUS}" = "Synced" ] && [ "${HEALTH_STATUS}" = "Healthy" ]; then
+              echo "Deployment successful"
+              exit 0
+            fi
+
+            if [ "${APP_NAME}" = "clientfacing-ui" ] && [ "${{ inputs.force_sync }}" != "true" ]; then
+              if [ -n "${SYNC_STATUS}" ]; then
+                echo "Application created successfully; manual sync is still required for clientfacing-ui."
+                exit 0
+              fi
+            fi
+
+            sleep 10
+          done
+
+          echo "Application did not reach the expected status in time."
+          kubectl get application "${APP_NAME}" -n "${ARGOCD_NAMESPACE}" -o yaml || true
+          exit 1
+

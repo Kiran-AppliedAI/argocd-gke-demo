@@ -12,6 +12,7 @@ It includes:
 - Kubernetes manifests with Kustomize overlays
 - ArgoCD `Application` manifests
 - GitHub Actions workflow for image build and manifest updates
+- GitHub Actions workflow to apply and verify ArgoCD applications on GKE
 - A runbook with `gcloud`, `kubectl`, and image build commands
 - A small helper script to inject your project-specific values
 
