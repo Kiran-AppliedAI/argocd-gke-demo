@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clientfacing UI Demo</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">ArgoCD / GKE demo</p>
+        <h1>Clientfacing UI</h1>
+        <p class="subtitle">
+          This frontend is deployed by ArgoCD and proxies live inventory data from the
+          backend API service running in the same GKE cluster.
+        </p>
+        <div class="hero-actions">
+          <button id="refreshButton" type="button">Refresh inventory</button>
+          <span id="statusPill" class="status-pill">Waiting for data</span>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <h2>Deployment Details</h2>
+          <ul class="facts">
+            <li><strong>App:</strong> clientfacing-ui</li>
+            <li><strong>Sync mode:</strong> manual</li>
+            <li><strong>Namespace:</strong> production</li>
+            <li><strong>Source path:</strong> k8s/clientfacing-ui/overlays/production</li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h2>Backend Link</h2>
+          <p id="backendInfo" class="muted">Loading backend configuration...</p>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Inventory Snapshot</h2>
+          <p id="lastUpdated" class="muted">No data fetched yet</p>
+        </div>
+        <div id="inventoryList" class="inventory-list"></div>
+      </section>
+    </main>
+
+    <script src="/config.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
