@@ -35,6 +35,7 @@ jobs:
       GKE_CLUSTER: argocd-demo
       GKE_LOCATION: us-central1-a
       ARGOCD_NAMESPACE: argocd
+      ARGOCD_INSTALL_MANIFEST: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
     steps:
       - name: Checkout repository
@@ -67,7 +68,24 @@ jobs:
       - name: Verify cluster access
         run: |
           kubectl get nodes
-          kubectl get namespace "${ARGOCD_NAMESPACE}"
+
+      - name: Ensure ArgoCD is installed
+        run: |
+          kubectl get namespace "${ARGOCD_NAMESPACE}" >/dev/null 2>&1 || \
+            kubectl create namespace "${ARGOCD_NAMESPACE}"
+
+          if kubectl get crd applications.argoproj.io >/dev/null 2>&1; then
+            echo "ArgoCD CRD already exists."
+          else
+            echo "ArgoCD CRD missing; installing ArgoCD."
+            kubectl apply -n "${ARGOCD_NAMESPACE}" -f "${ARGOCD_INSTALL_MANIFEST}"
+          fi
+
+          kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=300s
+          kubectl rollout status deployment/argocd-server -n "${ARGOCD_NAMESPACE}" --timeout=600s
+          kubectl rollout status deployment/argocd-repo-server -n "${ARGOCD_NAMESPACE}" --timeout=600s
+          kubectl rollout status deployment/argocd-redis -n "${ARGOCD_NAMESPACE}" --timeout=600s
+          kubectl rollout status statefulset/argocd-application-controller -n "${ARGOCD_NAMESPACE}" --timeout=600s
 
       - name: Verify ArgoCD CRD exists
         run: |
@@ -147,7 +165,5 @@ jobs:
           done
 
           echo "Application did not reach the expected status in time."
-          echo "Application did not reach the expected status in time."
           kubectl get application "${APP_NAME}" -n "${ARGOCD_NAMESPACE}" -o yaml || true
           exit 1
-
