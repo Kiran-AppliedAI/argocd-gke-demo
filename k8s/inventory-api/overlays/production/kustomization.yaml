@@ -9,4 +9,4 @@ resources:
 images:
   - name: inventory-api
     newName: us-central1-docker.pkg.dev/aaic-opsrabbit-demo/argocd-demo/inventory-api
-    newTag: bootstrap
+    newTag: v1

@@ -21,7 +21,7 @@ spec:
             - containerPort: 8080
           env:
             - name: APP_VERSION
-              value: bootstrap
+              value: v1
             - name: DEMO_REGION
               value: us-central1
             - name: DEMO_CLUSTER
