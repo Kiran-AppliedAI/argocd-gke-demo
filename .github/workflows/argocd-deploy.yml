@@ -78,7 +78,7 @@ jobs:
             echo "ArgoCD CRD already exists."
           else
             echo "ArgoCD CRD missing; installing ArgoCD."
-            kubectl apply -n "${ARGOCD_NAMESPACE}" -f "${ARGOCD_INSTALL_MANIFEST}"
+            kubectl apply --server-side -n "${ARGOCD_NAMESPACE}" -f "${ARGOCD_INSTALL_MANIFEST}"
           fi
 
           kubectl wait --for=condition=Established crd/applications.argoproj.io --timeout=300s
