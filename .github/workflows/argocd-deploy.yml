@@ -147,6 +147,7 @@ jobs:
           done
 
           echo "Application did not reach the expected status in time."
+          echo "Application did not reach the expected status in time."
           kubectl get application "${APP_NAME}" -n "${ARGOCD_NAMESPACE}" -o yaml || true
           exit 1
 
